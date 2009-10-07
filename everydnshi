@@ -1,0 +1,105 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2009 Renzo Carbonara (gnuk0001@gmail.com)
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+__VERSION__ = "0.1"
+
+import re
+import logging
+import optparse
+import urllib
+import urllib2
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("everydnshi")
+
+EVERYDNS_BASE_URL = u"http://dyn.everydns.net/"
+EVERYDNS_VERSION= "0.1";
+HTTP_USER_AGENT = "everydnshi/0.1"
+
+
+def update_everydns(username, password, ip=None, domain=None):
+    d = {'ver': EVERYDNS_VERSION }
+    if ip:
+        d['ip'] = ip
+    if domain:
+        d['domain'] = domain
+    req = urllib2.Request("%s?%s" % (EVERYDNS_BASE_URL, urllib.urlencode(d)))
+    req.add_header('User-Agent', HTTP_USER_AGENT)
+
+    password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
+    password_mgr.add_password(None, EVERYDNS_BASE_URL, username, password)
+    handler = urllib2.HTTPBasicAuthHandler(password_mgr)
+    opener = urllib2.build_opener(handler)
+    raw = opener.open(req).read()
+    log.debug(u"EveryDNS response\n%s" % raw)
+
+    exit_code = int(re.search(r'Exit code: (\d+)', raw).group(1))
+    if exit_code == 0:
+        ip_now = re.search(r'IP now: ([\d\.]+)', raw).group(1)
+        if domain:
+            log.info(u"EveryDNS domain '%s' updated. New IP: %s" % (domain, ip_now))
+        else:
+            log.info(u"EveryDNS domains updated. New IP: %s", ip_now)
+    else:
+        if domain:
+            log.error(u"EveryDNS domain '%s' not updated. Exit code %d" % (domain, exit_code))
+        else:
+            log.error(u"EveryDNS domains not updated. Exit code %d" % exit_code)
+
+
+def parse_args():
+    usage = u"usage: %prog [options]"
+    parser = optparse.OptionParser(usage)
+
+    parser.add_option("-v", "--verbose",
+            dest="verbose", action="store_true")
+
+    parser.add_option("-u", "--username",
+            dest="username", metavar=u"USERNAME",
+            help=u"EveryDNS account username")
+
+    parser.add_option("-p", "--password",
+            dest="password", metavar=u"PASSWORD",
+            help=u"EveryDNS account password")
+
+    parser.add_option("-i", "--ip",
+            dest="ip", metavar=u"IP",
+            help=u"Force IP address")
+
+    parser.add_option("-d", "--domain",
+            dest="domains", action="append", metavar=u"DOMAIN",
+            help=u"Domain to update")
+
+    opts, args = parser.parse_args()
+    if not opts.username or not opts.password:
+        parser.print_help()
+        raise SystemExit(1)
+    return opts, args
+
+
+if __name__ == '__main__':
+    opts, args = parse_args()
+    if opts.verbose:
+        log.setLevel(logging.DEBUG)
+    for domain in set(opts.domains or [None]):
+        update_everydns(opts.username, opts.password, opts.ip, domain)
